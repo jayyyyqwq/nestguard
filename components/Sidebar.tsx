@@ -2,16 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, Radio, Layers, QrCode, ArrowLeft } from "lucide-react";
+import { LayoutGrid, ArrowLeft } from "lucide-react";
 
-const navItems = [
-  { href: "/beekeeper", label: "Dashboard", icon: LayoutGrid },
-  { href: "/beekeeper/hive/H101", label: "Live monitoring", icon: Radio },
-  { href: "/beekeeper/batch/HC-MP-2026-00142", label: "Batches", icon: Layers },
-  { href: "/beekeeper/batch/new", label: "New batch", icon: QrCode },
-];
+const navItems = [{ href: "/enclosure", label: "Dashboard", icon: LayoutGrid }];
 
-export default function Sidebar({ name, cluster }: { name: string; cluster: string }) {
+export default function Sidebar() {
   const pathname = usePathname();
 
   return (
@@ -19,18 +14,15 @@ export default function Sidebar({ name, cluster }: { name: string; cluster: stri
       <div className="px-6 pt-7 pb-6">
         <Link href="/" className="flex items-center gap-2 text-white/60 text-xs mb-6 hover:text-white transition-colors">
           <ArrowLeft size={14} />
-          Back to Honey Chain
+          Back to NestGuard
         </Link>
-        <div className="font-display text-2xl">Honey Chain</div>
-        <div className="text-gold text-xs mt-1">Beekeeper workspace</div>
+        <div className="font-display text-2xl">NestGuard</div>
+        <div className="text-gold text-xs mt-1">Enclosure monitoring</div>
       </div>
 
       <nav className="flex-1 px-3 space-y-1">
         {navItems.map((item) => {
-          const active =
-            item.href === "/beekeeper"
-              ? pathname === "/beekeeper"
-              : pathname.startsWith(item.href.split("/").slice(0, 3).join("/"));
+          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
           const Icon = item.icon;
           return (
             <Link
@@ -46,11 +38,6 @@ export default function Sidebar({ name, cluster }: { name: string; cluster: stri
           );
         })}
       </nav>
-
-      <div className="px-6 py-5 border-t border-white/10">
-        <div className="text-sm font-medium">{name}</div>
-        <div className="text-xs text-white/50 mt-0.5">{cluster}</div>
-      </div>
     </aside>
   );
 }

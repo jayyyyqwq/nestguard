@@ -1,5 +1,5 @@
 {
-  "name": "honey-chain",
+  "name": "nestguard",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -11,7 +11,6 @@
   "dependencies": {
     "lucide-react": "0.400.0",
     "next": "14.2.35",
-    "qrcode.react": "^3.1.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "recharts": "2.12.7"

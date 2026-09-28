@@ -1,63 +1,107 @@
 """
-Rule-based hive health insight — computed live from sensor readings.
+Rule-based enclosure health insight — computed live from sensor readings.
 
-Not a trained model: there's no labeled failure dataset for these hives to
-train one on, so this encodes the same temperature/activity/weight
-thresholds a beekeeper would check manually. It's real in the sense that it
-reacts to the actual numbers (change a hive's readings, the insight changes
-with it) rather than being fixed prose per hive. A trained model is a
-drop-in replacement later — see README "Next steps" — nothing else in the
-app needs to change, callers only see `reason` / `action` strings.
+Not a trained model: there's no labeled failure dataset for these enclosures
+to train one on, so this encodes simple temperature/air-quality thresholds
+an owner would check manually. It's real in the sense that it reacts to the
+actual numbers (change an enclosure's readings, the insight changes with it)
+rather than being fixed prose per enclosure. A trained model is a drop-in
+replacement later — nothing else in the app needs to change, callers only
+see `status` / `reason` / `action`.
 """
 
 from dataclasses import dataclass
 
+OFFLINE_THRESHOLD_S = 300  # 5 min — a couple of missed 30-60s POST cycles before flagging offline
+
 HIGH_TEMP_C = 35.0
-CRITICAL_TEMP_C = 37.0
-WEIGHT_DROP_KG = 0.5
+CRITICAL_TEMP_C = 38.0
+
+# Raw MQ-135 analog readings (ESP32 ADC range 0-4095). Placeholder numbers —
+# calibrate once the real sensor is wired up and you can see what clean air
+# actually reads as at your site.
+HIGH_AIR_QUALITY = 1800
+CRITICAL_AIR_QUALITY = 2600
+
+# Raw sound-sensor analog readings (same 0-4095 range). Placeholder, same
+# calibrate-later caveat as air quality.
+LOW_SOUND = 800
+HIGH_SOUND = 2500
 
 
 @dataclass(frozen=True)
 class Insight:
+    status: str  # healthy | attention | critical
     reason: str
     action: str
 
 
-def compute_insight(
-    *,
-    temperature: float,
-    activity: str,
-    is_offline: bool,
-    last_synced: str,
-    trend_weights: list[float],
-) -> Insight:
-    if is_offline:
+def compute_insight(*, temperature: float, air_quality: float, elapsed_seconds: float) -> Insight:
+    if elapsed_seconds == float("inf"):
         return Insight(
-            reason=f"No data received {last_synced} — device likely offline.",
-            action="Check ESP32 power and Wi-Fi connection at the hive site.",
+            status="critical",
+            reason="No data received yet — device likely offline.",
+            action="Check ESP32 power and Wi-Fi connection at the enclosure.",
         )
 
-    weight_trend_down = len(trend_weights) >= 2 and (trend_weights[0] - trend_weights[-1]) >= WEIGHT_DROP_KG
+    if elapsed_seconds >= OFFLINE_THRESHOLD_S:
+        minutes = int(elapsed_seconds // 60)
+        return Insight(
+            status="critical",
+            reason=f"No data received in over {minutes} minutes — device likely offline.",
+            action="Check ESP32 power and Wi-Fi connection at the enclosure.",
+        )
 
     if temperature >= CRITICAL_TEMP_C:
         return Insight(
+            status="critical",
             reason=f"Temperature critically high at {temperature:.1f}°C.",
-            action="Inspect immediately — risk of colony overheating.",
+            action="Inspect immediately — risk of overheating.",
         )
 
-    if temperature >= HIGH_TEMP_C and (activity == "Low" or weight_trend_down):
+    if air_quality >= CRITICAL_AIR_QUALITY:
         return Insight(
-            reason="Temperature elevated while activity and weight trend down.",
-            action="Inspect hive within 24 hours for possible colony stress.",
+            status="critical",
+            reason=f"Air quality critically poor (reading {air_quality:.0f}).",
+            action="Ventilate immediately — possible gas or ammonia buildup.",
         )
 
-    if weight_trend_down and activity == "Low":
+    if temperature >= HIGH_TEMP_C:
         return Insight(
-            reason="Weight declining alongside low activity — possible foraging shortage.",
-            action="Inspect hive within 24 hours for possible colony stress.",
+            status="attention",
+            reason=f"Temperature elevated at {temperature:.1f}°C.",
+            action="Check ventilation within a few hours.",
+        )
+
+    if air_quality >= HIGH_AIR_QUALITY:
+        return Insight(
+            status="attention",
+            reason=f"Air quality declining (reading {air_quality:.0f}).",
+            action="Check ventilation within a few hours.",
         )
 
     return Insight(
-        reason="All readings within normal seasonal range.",
+        status="healthy",
+        reason="All readings within normal range.",
         action="No action needed — continue routine checks.",
     )
+
+
+def derive_activity(sound: float) -> str:
+    if sound >= HIGH_SOUND:
+        return "High"
+    if sound <= LOW_SOUND:
+        return "Low"
+    return "Normal"
+
+
+def humanize_elapsed(seconds: float) -> str:
+    if seconds == float("inf"):
+        return "never"
+    if seconds < 90:
+        return "just now"
+    minutes = int(seconds // 60)
+    if minutes < 60:
+        return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+    hours = minutes // 60
+    return f"{hours} hour{'s' if hours != 1 else ''} ago"

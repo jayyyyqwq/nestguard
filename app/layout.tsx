@@ -17,8 +17,8 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "Honey Chain",
-  description: "Blockchain-based honey traceability & smart beekeeping ecosystem",
+  title: "NestGuard",
+  description: "Live sensor monitoring for beehives, coops, and small enclosures",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

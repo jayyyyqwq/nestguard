@@ -1,11 +1,10 @@
 """
-Shared-secret gate for write and admin endpoints.
+Shared-secret gate for write endpoints.
 
 Not real user auth — there's no login, no per-user identity, just one API key
-that the frontend's server-side code attaches automatically. It exists to
-close the "anyone on the internet can POST a batch or read the KVIC dashboard"
-gap. Real phone+OTP login (see README "Next steps") is the follow-up; this is
-the minimum that makes the write/admin surface not wide open today.
+that the frontend's server-side code attaches automatically. Currently unused
+(no write endpoints exist yet), kept as the pattern a future device-ingestion
+endpoint (e.g. an ESP32 posting sensor readings) will reuse.
 """
 
 import os
