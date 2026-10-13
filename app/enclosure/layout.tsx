@@ -1,13 +1,13 @@
-import Sidebar from "@/components/Sidebar";
+import TopBar from "@/components/TopBar";
 
-// Always backed by a live API call — never statically prerendered at build time.
+// Always backed by a live API call, never statically prerendered at build time.
 export const dynamic = "force-dynamic";
 
 export default function EnclosureLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex">
-      <Sidebar />
-      <main className="flex-1 bg-paper min-h-screen">{children}</main>
-    </div>
+    <>
+      <TopBar />
+      <main className="mx-auto max-w-6xl px-4 sm:px-8 pt-10 pb-20">{children}</main>
+    </>
   );
 }

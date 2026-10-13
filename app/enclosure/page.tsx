@@ -1,86 +1,93 @@
-import Link from "next/link";
-import { AlertTriangle, ChevronRight } from "lucide-react";
-import { getEnclosures } from "@/lib/api";
-import StatusBadge from "@/components/StatusBadge";
+import { getDevices, getEnclosures, getRecentAlerts } from "@/lib/api";
+import { hasData, KIND, STATUS, worst } from "@/lib/display";
+import type { Enclosure, EnclosureStatus } from "@/lib/types";
+import AlertLog from "@/components/AlertLog";
+import { EmptySlot, EnclosurePanel } from "@/components/EnclosurePanel";
 
-export default async function EnclosureDashboard() {
-  const enclosures = await getEnclosures();
-  const attentionEnclosures = enclosures.filter((e) => e.status !== "healthy");
+function headline(enclosures: Enclosure[]): { title: string; detail: string; tone: EnclosureStatus } {
+  const reporting = enclosures.filter(hasData);
+  if (reporting.length === 0) {
+    return {
+      title: "Waiting for the boxes",
+      detail: "No readings yet. Power on an ESP32 box, or press Run simulation to watch a demo.",
+      tone: "waiting",
+    };
+  }
+  const offline = reporting.filter((e) => e.isOffline);
+  const top = worst(reporting.filter((e) => e.status !== "healthy" && !e.isOffline));
+
+  if (top) {
+    const noun = KIND[top.kind].noun;
+    const title = top.status === "critical" ? `Check the ${noun} now` : `Keep an eye on the ${noun}`;
+    return { title, detail: `${top.aiReason} ${top.aiAction}`, tone: top.status };
+  }
+  if (offline.length > 0) {
+    return {
+      title: offline.length === 1 ? "One box went quiet" : `${offline.length} boxes went quiet`,
+      detail: `${offline.map((e) => e.name).join(" and ")} stopped reporting. ${offline[0].aiAction}`,
+      tone: "critical",
+    };
+  }
+  return { title: "All clear", detail: "Every reporting box is inside its animal's safe range.", tone: "healthy" };
+}
+
+export default async function Overview() {
+  const [enclosures, devices, alerts] = await Promise.all([getEnclosures(), getDevices(), getRecentAlerts()]);
+  const { title, detail, tone } = headline(enclosures);
+  const names = Object.fromEntries(enclosures.map((e) => [e.id, e.name]));
+  const reporting = enclosures.filter((e) => hasData(e) && !e.isOffline).length;
+  const today = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" });
 
   return (
-    <div className="max-w-6xl mx-auto px-10 py-10">
-      <div className="flex items-end justify-between mb-10">
-        <div>
-          <div className="text-muted text-sm">Good afternoon,</div>
-          <h1 className="font-display text-3xl mt-1">Your enclosures</h1>
-        </div>
-        <Link
-          href="/enclosure/new"
-          className="bg-primary text-white text-sm font-medium px-5 py-2.5 rounded-lg hover:bg-primary-dark transition-colors"
-        >
-          + Register enclosure
-        </Link>
-      </div>
-
-      {/* stat cards */}
-      <div className="grid grid-cols-3 gap-5 mb-10">
-        <div className="bg-white border border-black/5 rounded-2xl p-6">
-          <div className="text-muted text-sm">Total enclosures</div>
-          <div className="font-display text-3xl mt-2">{enclosures.length}</div>
-        </div>
-        <div className="bg-trust-tint rounded-2xl p-6">
-          <div className="text-trust-dark text-sm">Healthy</div>
-          <div className="font-display text-3xl mt-2 text-trust-dark">
-            {enclosures.length - attentionEnclosures.length}
+    <>
+      <section className="animate-rise flex flex-col gap-6 border-b border-ink pb-8 md:flex-row md:items-end md:justify-between">
+        <div className="max-w-2xl">
+          <div className="flex items-center gap-3">
+            <span className={`h-3 w-3 ${STATUS[tone].bar}`} />
+            <span className="label">Status</span>
           </div>
+          <h1 className="mt-2 font-display text-5xl sm:text-6xl font-bold uppercase leading-[0.95] tracking-tight">
+            {title}
+          </h1>
+          <p className="mt-3 text-lg text-ink/75 leading-snug">{detail}</p>
         </div>
-        <div className="bg-gold-tint rounded-2xl p-6">
-          <div className="text-gold-dark text-sm">Needs attention</div>
-          <div className="font-display text-3xl mt-2 text-gold-dark">{attentionEnclosures.length}</div>
-        </div>
+        <dl className="grid grid-cols-3 border border-ink bg-panel md:w-80 shrink-0">
+          {[
+            ["Boxes", `${enclosures.length}/${devices.length}`],
+            ["Live", String(reporting)],
+            ["Open alerts", String(alerts.filter((a) => !a.resolved).length)],
+          ].map(([k, v], i) => (
+            <div key={k} className={`px-3 py-2.5 ${i > 0 ? "border-l border-ink" : ""}`}>
+              <dt className="label text-[11px]">{k}</dt>
+              <dd className="font-display text-3xl font-semibold tabular leading-none mt-1">{v}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      <div className="mt-3 flex justify-between font-mono text-[11px] uppercase text-muted">
+        <span>{today}</span>
+        <span>Readings every 30 s per box</span>
       </div>
 
-      {/* alert banner */}
-      {attentionEnclosures.length > 0 && (
-        <div className="bg-alert-tint border border-alert/20 rounded-2xl p-5 mb-8 flex items-start gap-4">
-          <AlertTriangle size={20} className="text-alert mt-0.5 shrink-0" />
-          <div>
-            <div className="font-medium text-alert">
-              {attentionEnclosures.length} {attentionEnclosures.length === 1 ? "enclosure needs" : "enclosures need"}{" "}
-              your attention
-            </div>
-            <div className="text-sm text-ink/70 mt-1">
-              {attentionEnclosures.map((e) => e.name).join(" and ")} —{" "}
-              {attentionEnclosures[0].aiAction.toLowerCase()}
-            </div>
-          </div>
-        </div>
-      )}
+      <section className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {devices.map((device, i) => {
+          const enclosure = enclosures.find((e) => e.id === device.id);
+          return enclosure ? (
+            <EnclosurePanel key={device.id} enclosure={enclosure} index={i} />
+          ) : (
+            <EmptySlot key={device.id} device={device} index={i} />
+          );
+        })}
+      </section>
 
-      {/* enclosure list */}
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="font-display text-xl">All enclosures</h2>
-      </div>
-      <div className="bg-white border border-black/5 rounded-2xl divide-y divide-black/5">
-        {enclosures.map((enclosure) => (
-          <Link
-            key={enclosure.id}
-            href={`/enclosure/${enclosure.id}`}
-            className="flex items-center justify-between px-6 py-4 hover:bg-primary-tint/30 transition-colors"
-          >
-            <div className="flex items-center gap-4">
-              <div className="font-medium w-32">{enclosure.name}</div>
-              <div className="text-sm text-muted">{enclosure.temperature}°C</div>
-              <div className="text-sm text-muted">{enclosure.humidity}% humidity</div>
-              <div className="text-sm text-muted">{enclosure.airQuality} air quality</div>
-            </div>
-            <div className="flex items-center gap-4">
-              <StatusBadge status={enclosure.status} />
-              <ChevronRight size={16} className="text-muted" />
-            </div>
-          </Link>
-        ))}
-      </div>
-    </div>
+      <section className="mt-14">
+        <div className="mb-3 flex items-baseline justify-between">
+          <h2 className="font-display text-3xl font-bold uppercase tracking-tight">Alert log</h2>
+          <span className="label">Latest {alerts.length}</span>
+        </div>
+        <AlertLog alerts={alerts} names={names} />
+      </section>
+    </>
   );
 }

@@ -7,15 +7,45 @@ html {
 }
 
 body {
-  background-color: #fdfcfa;
-  color: #231a10;
+  background-color: #e6e6e0;
+  color: #141414;
+  /* Faint engineering grid. */
+  background-image:
+    linear-gradient(rgba(20, 20, 20, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(20, 20, 20, 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
 }
 
 ::selection {
-  background-color: #f2a93b;
-  color: #231a10;
+  background-color: #ffbe0b;
+  color: #141414;
 }
 
 * {
   -webkit-tap-highlight-color: transparent;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Small uppercase label used across panels. */
+.label {
+  @apply font-display text-[13px] font-semibold uppercase tracking-[0.08em] text-muted;
+}
+
+/* Yellow/black hazard tape, used only while the simulation runs. */
+.hazard {
+  background-image: repeating-linear-gradient(-45deg, #141414 0 7px, #ffbe0b 7px 14px);
+  background-size: 28px 28px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
