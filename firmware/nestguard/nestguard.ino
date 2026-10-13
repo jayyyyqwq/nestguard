@@ -143,7 +143,7 @@ bool discoverBackend() {
     }
     delay(10);
   }
-  Serial.println("No NestGuard laptop answered. Is run.bat running on a laptop on this Wi-Fi?");
+  Serial.println("No NestGuard laptop answered. Is run.bat / run.sh running on a laptop on this Wi-Fi?");
   return false;
 }
 

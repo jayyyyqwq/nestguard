@@ -23,7 +23,7 @@ async function apiFetch<T>(path: string): Promise<T> {
     res = await fetch(`${API_BASE_URL}${path}`, { cache: "no-store" });
   } catch {
     throw new ApiError(
-      `Could not reach the NestGuard API at ${API_BASE_URL}. Is the backend running? Start it with run.bat.`
+      `Could not reach the NestGuard API at ${API_BASE_URL}. Is the backend running? Start it with run.bat (run.sh on a Mac).`
     );
   }
   if (!res.ok) {

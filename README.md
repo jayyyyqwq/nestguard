@@ -138,6 +138,12 @@ and Node.js via winget if missing, sets up the backend venv and npm packages, cr
 files, seeds the database, and opens the dashboard. After that, start the app any time with
 `run.bat`. `setup.bat --install-only` sets up without starting the servers.
 
+**macOS, one step:** in Terminal, run `bash setup.sh`. It does the same as `setup.bat` (installs
+Python 3.12 and Node.js via Homebrew if missing, or tells you where to get them). After that,
+start the app with `bash run.sh`; both servers run in that Terminal window, Ctrl+C stops them, and
+it keeps the Mac awake while running. macOS may ask once to allow incoming / local network
+connections: allow them so the boxes can reach the Mac.
+
 **Manual setup** requires Node.js 18+ and Python 3.11+.
 
 **1 · Backend**
@@ -168,7 +174,7 @@ wiring, flashing, placement, troubleshooting). Short version:
 Set the box's `ENCLOSURE_ID` (`HIVE1`, `COOP1` or `SHED1`) at the top of the sketch and flash it
 (libraries: DHT sensor library, ArduinoJson 7, WiFiManager by tzapu). Power it, join its
 `NestGuard-<ID>` hotspot from a phone and pick your Wi-Fi. It then finds the laptop running
-`run.bat` and its readings appear on the dashboard. `setup.bat` opens the firewall for this
+`run.bat` / `run.sh` and its readings appear on the dashboard. `setup.bat` opens the Windows firewall for this
 (TCP 8000/3000, UDP 47800, local subnet only) after one admin prompt.
 
 **Security.** Writes need the shared `API_KEY`. Boxes only trust a discovery answer carrying an
@@ -203,6 +209,7 @@ firmware/nestguard/          ESP32 Arduino sketch (Wi-Fi setup hotspot + laptop 
 docs/HARDWARE_GUIDE.md       Step-by-step build and setup guide, no experience needed
 scripts/allow-firewall.bat   Firewall rule for the boxes (setup.bat runs it)
 setup.bat / run.bat          One-time setup / start the app (Windows)
+setup.sh / run.sh            Same for macOS (bash setup.sh, then bash run.sh)
 ```
 
 ## Status

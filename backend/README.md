@@ -6,7 +6,7 @@ closes alerts, runs the demo simulation, and answers box discovery on the local 
 
 ## Setup
 
-`setup.bat` in the project root does all of this. By hand:
+`setup.bat` (Windows) or `setup.sh` (macOS) in the project root does all of this. By hand:
 
 ```bash
 cd backend
