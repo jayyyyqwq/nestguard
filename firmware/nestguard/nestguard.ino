@@ -1,76 +1,137 @@
 /*
- * NestGuard — ESP32 sensor firmware
+ * NestGuard: ESP32 sensor box firmware (plug and play)
  *
- * Reads DHT22 (temperature/humidity), MQ-135 (air quality), LDR (light), and
- * a sound sensor, then POSTs a JSON reading to the NestGuard backend every
+ * Reads DHT22 (temperature/humidity), MQ-135 (air quality), LDR (light) and a
+ * sound sensor, and POSTs a JSON reading to the NestGuard laptop every
  * POST_INTERVAL_MS.
  *
- * NOT FLASH-TESTED — there was no physical ESP32/sensors available to test
- * this against when it was written. Before relying on it:
- *   1. Double-check every pin number below against your actual wiring.
- *   2. The MQ-135 needs several minutes to warm up after first power-on —
- *      readings will look wrong/high during that window, that's normal, not
- *      a wiring fault.
- *   3. Install two libraries via Arduino IDE > Tools > Manage Libraries:
- *        - "DHT sensor library" by Adafruit (also installs "Adafruit
- *          Unified Sensor" as a dependency — accept it)
- *        - "ArduinoJson" by Benoit Blanchon
- *      WiFi.h / HTTPClient.h need no install — they ship with the ESP32
- *      board core (Boards Manager > "esp32" by Espressif Systems).
+ * Nothing about the network is hard-coded:
+ *   - Wi-Fi: on first start, or when no saved Wi-Fi is in range, the box opens
+ *     its own hotspot "NestGuard-<ENCLOSURE_ID>". Join it from a phone, pick
+ *     the Wi-Fi, type the password; the box remembers it. Holding the BOOT
+ *     button for 5 seconds forgets the saved Wi-Fi and reopens the hotspot.
+ *   - Laptop: the box broadcasts "NESTGUARD_DISCOVER" on UDP DISCOVERY_PORT
+ *     and whichever laptop runs NestGuard answers (backend/app/discovery.py).
+ *     If posting fails a few times in a row, it searches again, so switching
+ *     laptops or a new laptop IP sorts itself out.
  *
- * Wiring (ESP32 ADC1 pins only — ADC2 conflicts with Wi-Fi when it's active):
- *   DHT22 data   -> GPIO4  (digital)
- *   MQ-135 AOUT  -> GPIO34 (analog, input-only pin)
- *   LDR AOUT     -> GPIO35 (analog, input-only pin)
- *   Sound AOUT   -> GPIO32 (analog)
- *   All sensor VCC/GND to the ESP32's 3V3/GND (check your modules aren't 5V-only).
+ * NOT FLASH-TESTED: there was no physical ESP32 available when this was
+ * written. See docs/HARDWARE_GUIDE.md for wiring and setup.
+ *
+ * Libraries (Arduino IDE > Tools > Manage Libraries):
+ *   - "DHT sensor library" by Adafruit (accept "Adafruit Unified Sensor")
+ *   - "ArduinoJson" by Benoit Blanchon, version 7+
+ *   - "WiFiManager" by tzapu, version 2+
+ * Board support: Boards Manager > "esp32" by Espressif Systems.
+ *
+ * Wiring (ESP32 ADC1 pins only; ADC2 conflicts with Wi-Fi):
+ *   DHT22 data   -> GPIO4
+ *   MQ-135 AOUT  -> GPIO34 through a 10k / 20k voltage divider (the module runs
+ *                   on 5V from VIN, and its output can exceed the ESP32's 3.3V)
+ *   LDR AOUT     -> GPIO35
+ *   Sound AOUT   -> GPIO32
+ *   DHT22, LDR, sound VCC -> 3V3. MQ-135 VCC -> VIN (5V). All GND -> GND.
  */
 
 #include <WiFi.h>
+#include <WiFiUdp.h>
+#include <WiFiManager.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <DHT.h>
 
-// ---- Edit these for your deployment ----
-const char *WIFI_SSID = "YOUR_WIFI_SSID";
-const char *WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
-const char *BACKEND_URL = "http://192.168.1.100:8000";  // your laptop's local IP, from `ipconfig`
-const char *ENCLOSURE_ID = "COOP1";                      // must match an ID registered on the dashboard
-const char *API_KEY = "dev-local-key";                   // must match backend/.env's API_KEY
-// -----------------------------------------
+// ---- Set once per box, before uploading ----
+const char *ENCLOSURE_ID = "COOP1";     // HIVE1, COOP1 or SHED1
+const char *API_KEY = "dev-local-key";  // must match backend/.env's API_KEY
+// Leave empty so the box finds the laptop by itself. Only fill in, e.g.
+// "http://192.168.137.1:8000", on networks that block discovery.
+const char *FIXED_BACKEND_URL = "";
+// ---------------------------------------------
 
 #define DHT_PIN 4
 #define DHT_TYPE DHT22
 #define MQ135_PIN 34
 #define LDR_PIN 35
 #define SOUND_PIN 32
+#define BOOT_PIN 0
+
 #define POST_INTERVAL_MS 30000
+#define DISCOVERY_PORT 47800
+#define DISCOVERY_TIMEOUT_MS 2000
+#define RETRY_DELAY_MS 5000
+#define MAX_FAILED_POSTS 3
+#define WIFI_RESET_HOLD_MS 5000
+#define SETUP_HOTSPOT_TIMEOUT_S 180  // then restart and try the saved Wi-Fi again
 
 DHT dht(DHT_PIN, DHT_TYPE);
+WiFiUDP udp;
+
+String backendUrl;  // "http://<laptop ip>:<port>", empty until discovered
+int failedPosts = 0;
+unsigned long lastPostAt = 0;
+bool hasPosted = false;
+unsigned long bootPressedAt = 0;
 
 void connectWiFi() {
-  Serial.printf("Connecting to Wi-Fi \"%s\"", WIFI_SSID);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED) {
+  WiFiManager wm;
+  wm.setConfigPortalTimeout(SETUP_HOTSPOT_TIMEOUT_S);
+  String hotspot = String("NestGuard-") + ENCLOSURE_ID;
+  Serial.printf("Joining saved Wi-Fi, or opening setup hotspot \"%s\"...\n", hotspot.c_str());
+  if (!wm.autoConnect(hotspot.c_str())) {
+    Serial.println("No Wi-Fi set up in time. Restarting to try again.");
+    ESP.restart();
+  }
+  Serial.printf("Connected to \"%s\", box IP: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+}
+
+// Asks the network where NestGuard is. True once backendUrl is set.
+bool discoverBackend() {
+  if (strlen(FIXED_BACKEND_URL) > 0) {
+    backendUrl = FIXED_BACKEND_URL;
+    return true;
+  }
+
+  Serial.println("Looking for the NestGuard laptop...");
+  udp.beginPacket(WiFi.broadcastIP(), DISCOVERY_PORT);
+  udp.print("NESTGUARD_DISCOVER");
+  udp.endPacket();
+
+  unsigned long start = millis();
+  while (millis() - start < DISCOVERY_TIMEOUT_MS) {
+    if (udp.parsePacket() > 0) {
+      char reply[64];
+      int len = udp.read(reply, sizeof(reply) - 1);
+      reply[len > 0 ? len : 0] = '\0';
+      if (strncmp(reply, "NESTGUARD_HERE ", 15) == 0) {
+        backendUrl = "http://" + udp.remoteIP().toString() + ":" + String(atoi(reply + 15));
+        Serial.printf("Found NestGuard at %s\n", backendUrl.c_str());
+        return true;
+      }
+    }
+    delay(10);
+  }
+  Serial.println("No NestGuard laptop answered. Is run.bat running on a laptop on this Wi-Fi?");
+  return false;
+}
+
+// Holding BOOT for WIFI_RESET_HOLD_MS forgets the Wi-Fi and reopens the setup hotspot.
+void checkWiFiResetButton() {
+  if (digitalRead(BOOT_PIN) != LOW) {
+    bootPressedAt = 0;
+    return;
+  }
+  if (bootPressedAt == 0) {
+    bootPressedAt = millis();
+  } else if (millis() - bootPressedAt >= WIFI_RESET_HOLD_MS) {
+    Serial.println("BOOT held: forgetting saved Wi-Fi and restarting into setup mode.");
+    WiFiManager wm;
+    wm.resetSettings();
     delay(500);
-    Serial.print(".");
+    ESP.restart();
   }
-  Serial.println();
-  Serial.printf("Connected, IP: %s\n", WiFi.localIP().toString().c_str());
 }
 
-void setup() {
-  Serial.begin(115200);
-  dht.begin();
-  connectWiFi();
-}
-
-void postReading(float temperature, float humidity, int airQuality, int light, int sound) {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Wi-Fi dropped, reconnecting...");
-    connectWiFi();
-  }
-
+int postReading(float temperature, float humidity, int airQuality, int light, int sound) {
   JsonDocument doc;
   doc["temperature"] = temperature;
   doc["humidity"] = humidity;
@@ -81,22 +142,20 @@ void postReading(float temperature, float humidity, int airQuality, int light, i
   String body;
   serializeJson(doc, body);
 
-  String url = String(BACKEND_URL) + "/enclosures/" + ENCLOSURE_ID + "/readings";
-
+  String url = backendUrl + "/enclosures/" + ENCLOSURE_ID + "/readings";
   HTTPClient http;
+  http.setTimeout(5000);
   http.begin(url);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("X-API-Key", API_KEY);
 
   int statusCode = http.POST(body);
   Serial.printf("POST %s -> %d\n", url.c_str(), statusCode);
-  if (statusCode > 0) {
-    Serial.println(http.getString());
-  }
   http.end();
+  return statusCode;
 }
 
-void loop() {
+void readAndPost() {
   float temperature = dht.readTemperature();
   float humidity = dht.readHumidity();
   int airQuality = analogRead(MQ135_PIN);
@@ -104,13 +163,53 @@ void loop() {
   int sound = analogRead(SOUND_PIN);
 
   if (isnan(temperature) || isnan(humidity)) {
-    Serial.println("DHT22 read failed, skipping this cycle.");
-  } else {
-    Serial.printf(
-        "temp=%.1fC humidity=%.1f%% airQuality=%d light=%d sound=%d\n",
-        temperature, humidity, airQuality, light, sound);
-    postReading(temperature, humidity, airQuality, light, sound);
+    Serial.println("DHT22 read failed, skipping this cycle. Check the DHT22 wiring (data -> GPIO4).");
+    return;
+  }
+  Serial.printf("temp=%.1fC humidity=%.1f%% airQuality=%d light=%d sound=%d\n",
+                temperature, humidity, airQuality, light, sound);
+
+  int statusCode = postReading(temperature, humidity, airQuality, light, sound);
+  if (statusCode > 0) {
+    failedPosts = 0;
+    if (statusCode == 404) Serial.println("This box isn't registered: register it on the dashboard.");
+    if (statusCode == 401) Serial.println("API key mismatch with backend/.env.");
+  } else if (++failedPosts >= MAX_FAILED_POSTS) {
+    Serial.println("Laptop unreachable, searching for NestGuard again.");
+    backendUrl = "";
+    failedPosts = 0;
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(BOOT_PIN, INPUT_PULLUP);
+  dht.begin();
+  Serial.printf("\nNestGuard box %s starting\n", ENCLOSURE_ID);
+  connectWiFi();
+  udp.begin(DISCOVERY_PORT);
+}
+
+void loop() {
+  checkWiFiResetButton();
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Wi-Fi dropped, reconnecting...");
+    WiFi.reconnect();
+    delay(RETRY_DELAY_MS);
+    return;
   }
 
-  delay(POST_INTERVAL_MS);
+  if (backendUrl.isEmpty() && !discoverBackend()) {
+    delay(RETRY_DELAY_MS);
+    return;
+  }
+
+  if (hasPosted && millis() - lastPostAt < POST_INTERVAL_MS) {
+    delay(50);
+    return;
+  }
+  lastPostAt = millis();
+  hasPosted = true;
+  readAndPost();
 }
