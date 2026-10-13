@@ -13,14 +13,27 @@ class CamelModel(BaseModel):
 
 
 class TrendPoint(CamelModel):
-    time: str
+    time: datetime
     temp: float
     humidity: float
+    air_quality: float
+
+
+class LimitsOut(CamelModel):
+    attention: float
+    critical: float
+
+
+class EnclosureLimits(CamelModel):
+    temperature: LimitsOut
+    air_quality: LimitsOut
 
 
 class EnclosureOut(CamelModel):
     id: str
     name: str
+    kind: str
+    label: str
     temperature: float
     humidity: float
     air_quality: float
@@ -32,6 +45,7 @@ class EnclosureOut(CamelModel):
     ai_action: str
     last_synced: str
     is_offline: bool
+    limits: EnclosureLimits
     trend: list[TrendPoint] = []
 
 
@@ -45,18 +59,34 @@ class ReadingIn(CamelModel):
 
 class EnclosureCreate(CamelModel):
     id: str
-    name: str
+    name: str | None = None
 
-    @field_validator("id", "name")
+    @field_validator("name")
     @classmethod
-    def not_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("must not be blank")
-        return value
+    def blank_to_none(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+
+class DeviceOut(CamelModel):
+    id: str
+    kind: str
+    label: str
+    registered: bool
 
 
 class AlertOut(CamelModel):
+    enclosure_id: str
     kind: str
     message: str
     created_at: datetime
     resolved: bool
+
+
+class SimulationStatus(CamelModel):
+    running: bool
+    progress: float  # 0-1
+    elapsed_seconds: int
+    duration_seconds: int
+    phase: str

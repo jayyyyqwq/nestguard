@@ -5,6 +5,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
+TREND_POINTS = 60
+
 
 class Enclosure(Base):
     __tablename__ = "enclosures"
@@ -22,17 +24,17 @@ class Enclosure(Base):
         back_populates="enclosure", cascade="all, delete-orphan"
     )
 
-    # status / ai_reason / ai_action / is_offline / last_synced / activity are
-    # NOT mapped columns — app/routers/enclosures.py's _with_live_insight()
-    # sets them as plain instance attributes right before serialization, the
-    # same way the original code overrode ai_reason/ai_action live.
+    # kind / label / limits / status / ai_reason / ai_action / is_offline /
+    # last_synced / activity are NOT mapped columns: app/services.py's
+    # with_live_insight() sets them as plain instance attributes right before
+    # serialization. kind/label/limits come from app/devices.py via the ID.
 
     @property
     def trend(self) -> list[dict]:
-        """Last 24 sensor readings, shaped for schemas.TrendPoint."""
-        points = sorted(self.readings, key=lambda r: r.created_at)[-24:]
+        """Last TREND_POINTS sensor readings, shaped for schemas.TrendPoint."""
+        points = sorted(self.readings, key=lambda r: r.created_at)[-TREND_POINTS:]
         return [
-            {"time": r.created_at.strftime("%H:%M"), "temp": r.temperature, "humidity": r.humidity}
+            {"time": r.created_at, "temp": r.temperature, "humidity": r.humidity, "air_quality": r.air_quality}
             for r in points
         ]
 

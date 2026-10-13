@@ -17,15 +17,15 @@ from app.models import Enclosure
 
 @pytest.fixture(autouse=True)
 def _fresh_db():
-    """Creates a clean schema with one recently-synced, healthy enclosure before each test."""
+    """Creates a clean schema with a recently-synced, healthy coop (COOP1) before each test."""
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         db.add(
             Enclosure(
-                id="E001",
-                name="Enclosure E001",
-                temperature=32.0,
+                id="COOP1",
+                name="Chicken coop",
+                temperature=24.0,
                 humidity=55.0,
                 air_quality=700.0,
                 light=300.0,

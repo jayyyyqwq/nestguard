@@ -1,10 +1,9 @@
 """
 Shared-secret gate for write endpoints.
 
-Not real user auth — there's no login, no per-user identity, just one API key
-that the frontend's server-side code attaches automatically. Currently unused
-(no write endpoints exist yet), kept as the pattern a future device-ingestion
-endpoint (e.g. an ESP32 posting sensor readings) will reuse.
+Not real user auth: there's no login, no per-user identity, just one API key
+that the ESP32 firmware and the frontend's server-side code attach. Guards every
+write: registering a box, ingesting readings, starting/stopping the simulation.
 """
 
 import os

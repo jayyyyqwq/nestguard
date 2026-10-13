@@ -1,90 +1,82 @@
 """
-Rule-based enclosure health insight — computed live from sensor readings.
+Rule-based enclosure health insight, computed live from sensor readings.
 
 Not a trained model: there's no labeled failure dataset for these enclosures
-to train one on, so this encodes simple temperature/air-quality thresholds
-an owner would check manually. It's real in the sense that it reacts to the
-actual numbers (change an enclosure's readings, the insight changes with it)
-rather than being fixed prose per enclosure. A trained model is a drop-in
-replacement later — nothing else in the app needs to change, callers only
-see `status` / `reason` / `action`.
+to train one on, so this encodes the temperature/air-quality limits an owner
+would check by hand, per animal (see app/devices.py). It reacts to the actual
+numbers rather than being fixed prose per enclosure. A trained model is a
+drop-in replacement later: callers only see `status` / `reason` / `action`.
 """
 
 from dataclasses import dataclass
 
-OFFLINE_THRESHOLD_S = 300  # 5 min — a couple of missed 30-60s POST cycles before flagging offline
+from app.devices import AIR_QUALITY, Device
 
-HIGH_TEMP_C = 35.0
-CRITICAL_TEMP_C = 38.0
+OFFLINE_THRESHOLD_S = 300  # 5 min: a few missed 30-60s POST cycles before flagging offline
 
-# Raw MQ-135 analog readings (ESP32 ADC range 0-4095). Placeholder numbers —
-# calibrate once the real sensor is wired up and you can see what clean air
-# actually reads as at your site.
-HIGH_AIR_QUALITY = 1800
-CRITICAL_AIR_QUALITY = 2600
-
-# Raw sound-sensor analog readings (same 0-4095 range). Placeholder, same
-# calibrate-later caveat as air quality.
+# Raw sound-sensor analog readings (ESP32 ADC range 0-4095). Placeholder,
+# calibrate once the real sensor is wired up.
 LOW_SOUND = 800
 HIGH_SOUND = 2500
+
+OFFLINE_ACTION = "Check the ESP32's power and Wi-Fi at the enclosure."
+
+HEAT_ACTION = {
+    "beehive": "Shade the hive and open the top vent; brood is at risk above 37°C.",
+    "coop": "Open vents, add shade and cool water; chickens can't sweat.",
+    "shelter": "Move animals to shade and improve airflow; rabbits overheat fast.",
+}
 
 
 @dataclass(frozen=True)
 class Insight:
-    status: str  # healthy | attention | critical
+    status: str  # waiting | healthy | attention | critical
     reason: str
     action: str
 
 
-def compute_insight(*, temperature: float, air_quality: float, elapsed_seconds: float) -> Insight:
+def compute_insight(
+    *, device: Device, temperature: float, air_quality: float, elapsed_seconds: float
+) -> Insight:
     if elapsed_seconds == float("inf"):
         return Insight(
-            status="critical",
-            reason="No data received yet — device likely offline.",
-            action="Check ESP32 power and Wi-Fi connection at the enclosure.",
+            "waiting", "No readings yet.", "Power on the box, or press Run simulation to see a demo."
         )
 
     if elapsed_seconds >= OFFLINE_THRESHOLD_S:
         minutes = int(elapsed_seconds // 60)
+        return Insight("critical", f"No data for {minutes} minutes, the box is likely offline.", OFFLINE_ACTION)
+
+    limits = device.temperature
+    if temperature >= limits.critical:
         return Insight(
-            status="critical",
-            reason=f"No data received in over {minutes} minutes — device likely offline.",
-            action="Check ESP32 power and Wi-Fi connection at the enclosure.",
+            "critical",
+            f"Temperature critically high at {temperature:.1f}°C (limit {limits.critical:.0f}°C).",
+            f"Act now. {HEAT_ACTION[device.kind]}",
         )
 
-    if temperature >= CRITICAL_TEMP_C:
+    if air_quality >= AIR_QUALITY.critical:
         return Insight(
-            status="critical",
-            reason=f"Temperature critically high at {temperature:.1f}°C.",
-            action="Inspect immediately — risk of overheating.",
+            "critical",
+            f"Air quality critically poor (reading {air_quality:.0f}).",
+            "Ventilate now: likely ammonia or gas buildup. Clean out bedding.",
         )
 
-    if air_quality >= CRITICAL_AIR_QUALITY:
+    if temperature >= limits.attention:
         return Insight(
-            status="critical",
-            reason=f"Air quality critically poor (reading {air_quality:.0f}).",
-            action="Ventilate immediately — possible gas or ammonia buildup.",
+            "attention",
+            f"Temperature rising at {temperature:.1f}°C (comfortable below {limits.attention:.0f}°C).",
+            f"Check within a few hours. {HEAT_ACTION[device.kind]}",
         )
 
-    if temperature >= HIGH_TEMP_C:
+    if air_quality >= AIR_QUALITY.attention:
         return Insight(
-            status="attention",
-            reason=f"Temperature elevated at {temperature:.1f}°C.",
-            action="Check ventilation within a few hours.",
+            "attention",
+            f"Air quality declining (reading {air_quality:.0f}).",
+            "Improve ventilation within a few hours.",
         )
 
-    if air_quality >= HIGH_AIR_QUALITY:
-        return Insight(
-            status="attention",
-            reason=f"Air quality declining (reading {air_quality:.0f}).",
-            action="Check ventilation within a few hours.",
-        )
-
-    return Insight(
-        status="healthy",
-        reason="All readings within normal range.",
-        action="No action needed — continue routine checks.",
-    )
+    return Insight("healthy", "All readings within the safe range.", "Nothing to do. Routine checks only.")
 
 
 def derive_activity(sound: float) -> str:
