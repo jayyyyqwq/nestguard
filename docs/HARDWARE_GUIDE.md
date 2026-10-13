@@ -343,7 +343,7 @@ If something's wrong, the Serial Monitor tells you:
 | `No NestGuard laptop answered` | Box is on Wi-Fi but no laptop replied | Is `run.bat` running? Is the laptop on the **same** Wi-Fi? Did Step 2 end with `[ok]`? |
 | `-> -1` a few times, then `searching for NestGuard again` | Laptop went away (closed, asleep, other Wi-Fi) | Start `run.bat`; the box finds it again by itself |
 | `-> 404` | This box isn't registered | Register it on the dashboard, or check the ENCLOSURE_ID spelling |
-| `-> 401` | Box and laptop use different keys | Leave `API_KEY` as `"dev-local-key"` |
+| `-> 401`, or `Ignored an answer ... failed verification` | Box and laptop use different keys | The box's `API_KEY` must match `API_KEY` in `backend/.env` |
 | `DHT22 read failed` | Temperature sensor not answering | Check the DHT22's 3 wires, especially **out > D4** |
 | Air quality very high for the first few minutes | MQ-135 warming up | Normal, see "About the air sensor" |
 

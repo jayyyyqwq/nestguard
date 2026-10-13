@@ -10,8 +10,11 @@
  *     its own hotspot "NestGuard-<ENCLOSURE_ID>". Join it from a phone, pick
  *     the Wi-Fi, type the password; the box remembers it. Holding the BOOT
  *     button for 5 seconds forgets the saved Wi-Fi and reopens the hotspot.
- *   - Laptop: the box broadcasts "NESTGUARD_DISCOVER" on UDP DISCOVERY_PORT
- *     and whichever laptop runs NestGuard answers (backend/app/discovery.py).
+ *   - Laptop: the box broadcasts "NESTGUARD_DISCOVER <nonce>" on UDP
+ *     DISCOVERY_PORT and whichever laptop runs NestGuard answers
+ *     (backend/app/discovery.py) with an HMAC-SHA256 proof keyed by API_KEY.
+ *     Answers whose proof doesn't check out are ignored, so another device on
+ *     the Wi-Fi can't pose as NestGuard and collect readings or the key.
  *     If posting fails a few times in a row, it searches again, so switching
  *     laptops or a new laptop IP sorts itself out.
  *
@@ -39,6 +42,7 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <DHT.h>
+#include "mbedtls/md.h"  // HMAC, part of the ESP32 board package
 
 // ---- Set once per box, before uploading ----
 const char *ENCLOSURE_ID = "COOP1";     // HIVE1, COOP1 or SHED1
@@ -84,6 +88,22 @@ void connectWiFi() {
   Serial.printf("Connected to \"%s\", box IP: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
 }
 
+// Hex HMAC-SHA256 of message, keyed with API_KEY. Must match discovery.proof().
+String hmacHex(const String &message) {
+  unsigned char digest[32];
+  mbedtls_md_context_t ctx;
+  mbedtls_md_init(&ctx);
+  mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 1);
+  mbedtls_md_hmac_starts(&ctx, (const unsigned char *)API_KEY, strlen(API_KEY));
+  mbedtls_md_hmac_update(&ctx, (const unsigned char *)message.c_str(), message.length());
+  mbedtls_md_hmac_finish(&ctx, digest);
+  mbedtls_md_free(&ctx);
+
+  char hex[65];
+  for (int i = 0; i < 32; i++) sprintf(hex + 2 * i, "%02x", digest[i]);
+  return String(hex);
+}
+
 // Asks the network where NestGuard is. True once backendUrl is set.
 bool discoverBackend() {
   if (strlen(FIXED_BACKEND_URL) > 0) {
@@ -91,21 +111,34 @@ bool discoverBackend() {
     return true;
   }
 
+  // Fresh random nonce per search, so an old answer can't be replayed.
+  char nonce[17];
+  snprintf(nonce, sizeof(nonce), "%08lx%08lx", (unsigned long)esp_random(), (unsigned long)esp_random());
+
   Serial.println("Looking for the NestGuard laptop...");
   udp.beginPacket(WiFi.broadcastIP(), DISCOVERY_PORT);
-  udp.print("NESTGUARD_DISCOVER");
+  udp.print("NESTGUARD_DISCOVER ");
+  udp.print(nonce);
   udp.endPacket();
 
   unsigned long start = millis();
   while (millis() - start < DISCOVERY_TIMEOUT_MS) {
     if (udp.parsePacket() > 0) {
-      char reply[64];
+      char reply[128];
       int len = udp.read(reply, sizeof(reply) - 1);
       reply[len > 0 ? len : 0] = '\0';
-      if (strncmp(reply, "NESTGUARD_HERE ", 15) == 0) {
-        backendUrl = "http://" + udp.remoteIP().toString() + ":" + String(atoi(reply + 15));
-        Serial.printf("Found NestGuard at %s\n", backendUrl.c_str());
-        return true;
+
+      int port = 0;
+      char proof[65] = {0};
+      if (sscanf(reply, "NESTGUARD_HERE %d %64s", &port, proof) == 2) {
+        String sender = udp.remoteIP().toString();
+        String expected = hmacHex(String(nonce) + ":" + String(port) + ":" + sender);
+        if (expected.equals(proof)) {
+          backendUrl = "http://" + sender + ":" + String(port);
+          Serial.printf("Found NestGuard at %s\n", backendUrl.c_str());
+          return true;
+        }
+        Serial.printf("Ignored an answer from %s that failed verification (wrong API_KEY?)\n", sender.c_str());
       }
     }
     delay(10);

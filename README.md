@@ -171,6 +171,12 @@ Set the box's `ENCLOSURE_ID` (`HIVE1`, `COOP1` or `SHED1`) at the top of the ske
 `run.bat` and its readings appear on the dashboard. `setup.bat` opens the firewall for this
 (TCP 8000/3000, UDP 47800, local subnet only) after one admin prompt.
 
+**Security.** Writes need the shared `API_KEY`. Boxes only trust a discovery answer carrying an
+HMAC proof made with that key, and the dashboard's proxy routes refuse requests that don't come
+from the dashboard itself (CSRF). The default key `dev-local-key` is public, so for anything
+beyond a home demo set your own in all three places: `backend/.env` (`API_KEY`), `.env.local`
+(`HONEYCHAIN_API_KEY`) and the firmware (`API_KEY`).
+
 ### Tests
 
 ```bash
