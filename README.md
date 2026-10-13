@@ -11,7 +11,7 @@
 ## Problem
 
 Beekeepers and small poultry farmers can't watch their hives or coops all day. If it gets too
-hot, too humid, or the air turns bad inside, the bees or birds can get sick or die — and by the
+hot, too humid, or the air turns bad inside, the bees or birds can get sick or die, and by the
 time someone notices on a manual check, it's often too late. There's no easy, cheap way for a
 small farmer to know what's happening inside the box right now.
 
@@ -20,8 +20,8 @@ small farmer to know what's happening inside the box right now.
 A small ESP32-based sensor box sits inside the enclosure, constantly reading temperature,
 humidity, air quality, light, and sound, and sends this data over Wi-Fi to a locally-hosted
 dashboard. The dashboard shows live readings, trend charts, and a plain-language warning the
-moment something crosses a safe threshold (e.g. *"Temperature critically high — inspect
-immediately"*) — no manual checking needed, no cloud hosting required.
+moment something crosses a safe threshold (e.g. *"Temperature critically high. Act now"*). No manual checking needed, no cloud hosting
+required.
 
 ## How it works
 
@@ -47,26 +47,63 @@ flowchart LR
     WEB -- "live cards, trend chart,<br/>plain-language warnings" --> YOU(("You"))
 ```
 
-Everything runs on one local network — no internet dependency, no cloud bill. Your laptop hosts
-the backend and dashboard; the ESP32 just needs to join the same Wi-Fi and knows your laptop's
-local IP.
+Everything runs on one local network: no internet dependency, no cloud bill. Your laptop hosts
+the backend and dashboard. Boxes are plug and play: Wi-Fi is set from a phone through the box's
+own setup hotspot, and the box finds whichever laptop runs NestGuard by UDP broadcast
+(`backend/app/discovery.py`), so no IP is ever typed in and any laptop works.
 
 ## Features
 
-- **Live dashboard** — every registered enclosure shown as a card with current temperature,
-  humidity, and air quality at a glance
-- **Per-enclosure detail view** — all 5 sensor readings, a temperature/humidity trend chart, and
-  a plain-language AI insight panel
-- **Automatic alerts** — when a reading crosses a safe threshold, an alert opens; when it recovers,
-  the alert auto-resolves. Full alert history is kept, not just the current state
-- **Register enclosures from the dashboard** — no code changes needed to add a new hive/coop/
-  shelter, just a name and an ID that the ESP32 firmware uses to identify itself
-- **Offline detection** — if a device stops reporting, the dashboard flags it automatically after
-  a few missed check-ins
+- **Three boxes, one per animal.** A beehive (`HIVE1`), a chicken coop (`COOP1`) and a livestock
+  shelter (`SHED1`). Each has its own panel on the overview: live temperature, humidity and air
+  quality, a 24h sparkline, and a plain-language verdict.
+- **Safe ranges per animal.** Every reading sits on a gauge split into safe, watch and danger
+  zones for that animal. 35°C is a normal brood nest for bees but dangerous for chickens, so
+  the limits differ (table below).
+- **Automatic alerts.** When a reading leaves its safe range an alert opens; when the status
+  changes or recovers, it closes. The alert log on the overview and each box's page keeps the
+  full history.
+- **Register a box from the dashboard.** Pick the box from a dropdown; the form shows the exact
+  `ENCLOSURE_ID` line to flash into the firmware.
+- **Offline detection.** A box that misses a few check-ins (5 min) is flagged as offline.
+- **No fake data.** A box shows readings only once a real ESP32 posts, or while the simulation
+  runs. Until then it shows zeros and "waiting for first reading".
+- **Live refresh.** The dashboard refreshes itself every 15 seconds, every 2.5 seconds while a
+  simulation runs.
+
+### Safe ranges
+
+| Box | Watch from | Danger from | Why |
+|---|---|---|---|
+| Beehive | 37°C | 39°C | Bees hold the brood nest at 34 to 36°C; brood is damaged above ~37°C |
+| Chicken coop | 30°C | 35°C | Chickens can't sweat and start panting above ~30°C |
+| Livestock shelter | 28°C | 32°C | Rabbits and similar animals overheat quickly |
+| All boxes, air quality | 1800 | 2600 | Raw MQ-135 reading; calibrate on site |
+
+Limits live in `backend/app/devices.py`.
+
+### No hardware? Run the simulation
+
+Press **Run simulation** in the top bar. A virtual ESP32 posts readings for every registered box
+through the same ingestion endpoint a real box uses, every 3 seconds for 2 minutes:
+
+1. Baseline, everything in range.
+2. The coop heats up past 30°C (watch), then past 35°C (act now).
+3. The coop cools down while the hive's air goes stale.
+4. The hive vent clears and everything returns to normal.
+
+The hive stays at ~35°C the whole time and stays green, which shows the per-animal limits at
+work. Alerts open and close live in the alert log.
+
+Simulated data only exists while the run is on. Starting, finishing or stopping a run wipes all
+readings and alerts and puts every box back to "waiting for first reading". Don't run it once real
+boxes are installed.
 
 ## Hardware
 
-One small box per enclosure. Total cost is roughly ₹1,000–1,300.
+One small box per enclosure. Total cost is roughly ₹1,000–1,300. The
+[hardware guide](docs/HARDWARE_GUIDE.md) has the exact shopping list (including the three resistors
+the MQ-135 needs) and wiring.
 
 | Part | What it does | Cost (₹) |
 |---|---|---|
@@ -79,7 +116,7 @@ One small box per enclosure. Total cost is roughly ₹1,000–1,300.
 | Small protective box | Keeps electronics safe from dust/moisture | 100–150 |
 | Power adapter/cable | Powers the whole thing | ~100 |
 
-**Optional add-ons** (not built yet — only worth it once the core system is proven):
+**Optional add-ons** (not built yet, only worth it once the core system is proven):
 
 | Part | What it does | Cost (₹) |
 |---|---|---|
@@ -90,40 +127,49 @@ One small box per enclosure. Total cost is roughly ₹1,000–1,300.
 
 | Layer | Tech |
 |---|---|
-| Firmware | ESP32 (Arduino/C++), DHT + ArduinoJson libraries |
+| Firmware | ESP32 (Arduino/C++), DHT, ArduinoJson and WiFiManager libraries |
 | Backend | FastAPI, SQLAlchemy, SQLite |
 | Frontend | Next.js 14 (App Router), TypeScript, Tailwind CSS, Recharts |
 
 ## Quick start
 
-Requires Node.js 18+ and Python 3.11+.
+**Windows, one step:** double-click `setup.bat` (or run it from a terminal). It installs Python
+and Node.js via winget if missing, sets up the backend venv and npm packages, creates the `.env`
+files, seeds the database, and opens the dashboard. After that, start the app any time with
+`run.bat`. `setup.bat --install-only` sets up without starting the servers.
+
+**Manual setup** requires Node.js 18+ and Python 3.11+.
 
 **1 · Backend**
 
 ```bash
 cd backend
 python -m venv venv
-venv\Scripts\activate        # Windows — `source venv/bin/activate` on macOS/Linux
+venv\Scripts\activate        # Windows; on macOS/Linux: source venv/bin/activate
 pip install -r requirements.txt
-copy .env.example .env       # `cp` on macOS/Linux — defaults work as-is
-python -m app.seed           # creates honeychain.db with sample enclosures
-uvicorn app.main:app --reload --port 8000
+copy .env.example .env       # `cp` on macOS/Linux. Defaults work as-is
+python -m app.seed           # creates honeychain.db, registers HIVE1 + COOP1 (--reset to start over)
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000   # 0.0.0.0 so ESP32 boxes on Wi-Fi can reach it
 ```
 
 **2 · Frontend**, in a second terminal
 
 ```bash
 npm install
-copy .env.local.example .env.local   # `cp` on macOS/Linux — defaults work as-is
+copy .env.local.example .env.local   # `cp` on macOS/Linux. Defaults work as-is
 npm run dev
 ```
 
 Open **http://localhost:3000**. Backend API docs: **http://localhost:8000/docs**.
 
-**3 · Firmware** (once you have the hardware — see `firmware/nestguard/nestguard.ino`)
+**3 · Hardware**: follow the step-by-step [hardware guide](docs/HARDWARE_GUIDE.md) (shopping list,
+wiring, flashing, placement, troubleshooting). Short version:
 
-Edit the Wi-Fi credentials, your laptop's local IP, and the enclosure ID at the top of the sketch,
-flash it to the ESP32, and its readings will start appearing on the dashboard automatically.
+Set the box's `ENCLOSURE_ID` (`HIVE1`, `COOP1` or `SHED1`) at the top of the sketch and flash it
+(libraries: DHT sensor library, ArduinoJson 7, WiFiManager by tzapu). Power it, join its
+`NestGuard-<ID>` hotspot from a phone and pick your Wi-Fi. It then finds the laptop running
+`run.bat` and its readings appear on the dashboard. `setup.bat` opens the firewall for this
+(TCP 8000/3000, UDP 47800, local subnet only) after one admin prompt.
 
 ### Tests
 
@@ -134,19 +180,28 @@ cd backend && python -m pytest
 ## Project structure
 
 ```
-app/                         Next.js pages
-  enclosure/                 Dashboard list, detail view, registration form
-  api/enclosures/            Server-side proxy for the one client-side write
+app/
+  enclosure/                 Overview, box detail page, register form
+  api/                       Server-side proxies that attach the API key (register, simulation)
+components/                  Panels, safe-range gauge, charts, alert log, top bar
+lib/                         API client, types, display helpers
 backend/
-  app/models.py              Enclosure, SensorReading, Alert
-  app/routers/enclosures.py  List/create enclosures, ingest readings, list alerts
-  app/insight.py             Rule-based threshold logic (temperature, air quality)
-firmware/nestguard/          ESP32 Arduino sketch
-report.md                    Full written explanation of the project
+  app/devices.py             The three boxes and their per-animal limits
+  app/insight.py             Rule-based verdict from readings and limits
+  app/services.py            Reading ingestion and alert open/close logic
+  app/simulation.py          Virtual ESP32 scenario
+  app/discovery.py           Answers box discovery broadcasts (UDP 47800)
+  app/routers/               Enclosures, devices + alert feed, simulation
+  app/seed.py                Registers HIVE1 + COOP1 (python -m app.seed [--reset])
+firmware/nestguard/          ESP32 Arduino sketch (Wi-Fi setup hotspot + laptop discovery)
+docs/HARDWARE_GUIDE.md       Step-by-step build and setup guide, no experience needed
+scripts/allow-firewall.bat   Firewall rule for the boxes (setup.bat runs it)
+setup.bat / run.bat          One-time setup / start the app (Windows)
 ```
 
 ## Status
 
-The software pipeline (firmware code → ingestion → storage → live dashboard → alerts) is built
-and tested end to end with simulated sensor data. Physical hardware hasn't been wired up yet —
-see `report.md` for what's next.
+The software pipeline (ingestion → storage → live dashboard → alerts) and box discovery are
+built and tested, with simulated sensor data standing in for the boxes. The firmware has not yet
+been flashed onto a real ESP32: build one box first, following the
+[hardware guide](docs/HARDWARE_GUIDE.md), before building the rest.
