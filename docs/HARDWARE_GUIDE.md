@@ -14,7 +14,7 @@ Plan about **2 hours for your first box**. The second and third boxes take about
   ENCLOSURE                         YOUR HOME WI-FI                YOUR LAPTOP
  ┌───────────────┐                                              ┌──────────────────┐
  │ Sensor box    │   sends readings every 30 seconds            │ NestGuard        │
- │ (ESP32 +      │ ───────────── over Wi-Fi ──────────────────▶ │ (run.bat)        │
+ │ (ESP32 +      │ ───────────── over Wi-Fi ──────────────────▶ │ (run.bat/run.sh) │
  │  4 sensors)   │                                              │                  │
  └───────────────┘                                              │ Dashboard at     │
    powered by a USB phone charger                               │ localhost:3000   │
@@ -23,8 +23,12 @@ Plan about **2 hours for your first box**. The second and third boxes take about
 
 - The **sensor box** measures temperature, humidity, air quality, light and sound.
 - Every 30 seconds it sends the numbers to **your laptop** over your normal home Wi-Fi.
-- Your laptop runs **NestGuard** (the `run.bat` you already use). It stores the readings, shows
-  them on the dashboard, and raises an alert when something goes out of the safe range.
+- Your laptop runs **NestGuard** (`run.bat` on Windows, `run.sh` on a Mac). It stores the
+  readings, shows them on the dashboard, and raises an alert when something goes out of the safe
+  range.
+- The ESP32 itself also needs a small program on it, which tells it to read the sensors and send
+  the numbers. You copy that program onto the board once, from the laptop, with the free Arduino
+  IDE (Part 3 and Part 5). The full program is printed at the end of this guide.
 - Nothing goes to the internet. No account, no cloud, no monthly fee.
 
 **It's plug and play.** You never type an address or a Wi-Fi password into the code:
@@ -39,8 +43,8 @@ Plan about **2 hours for your first box**. The second and third boxes take about
 
 | Where | What you need | When |
 |---|---|---|
-| Every laptop that shows the dashboard (yours, your friend's) | **NestGuard** (`setup.bat` once, then `run.bat`) | Always, to see the dashboard |
-| The laptop you build the boxes on | **Arduino IDE** (free) | Only once per box, to load the program onto it. Your friend doesn't need it |
+| Every laptop that shows the dashboard (yours, your friend's) | **NestGuard**: Windows `setup.bat` once, then `run.bat`. Mac: `setup.sh` once, then `run.sh` | Always, to see the dashboard |
+| The laptop you build the boxes on | **Arduino IDE** (free, Windows or Mac) | Only once per box, to load the program onto it. Your friend doesn't need it |
 | The laptop you build the boxes on | A USB driver (free, maybe) | Only if the laptop doesn't recognise the board, see Step 4 |
 | Phone | **Nothing to install.** Just its Wi-Fi settings and browser | To give a box your Wi-Fi password (Step 12), and optionally to view the dashboard |
 
@@ -69,7 +73,7 @@ Plan about **2 hours for your first box**. The second and third boxes take about
 
 ### Tools
 
-- A Windows laptop (the one that runs NestGuard)
+- A laptop that runs NestGuard: Windows 10/11 or a Mac (macOS 12 or newer)
 - A phone
 - Scissors or a craft knife, and a drill or hot nail to make holes in the plastic box
 - Double-sided tape or hot glue
@@ -81,12 +85,34 @@ Plan about **2 hours for your first box**. The second and third boxes take about
 
 ### Step 1. Make sure NestGuard runs
 
-If you haven't yet, double-click `setup.bat` in the NestGuard folder. After that, start it any
-time with `run.bat`. The dashboard opens at <http://localhost:3000>.
+**Windows:** if you haven't yet, double-click `setup.bat` in the NestGuard folder. After that,
+start it any time with `run.bat`.
+
+**Mac:**
+
+1. Open **Terminal** (press **Cmd + Space**, type `Terminal`, press Enter).
+2. Type **bash** followed by a space, then drag the file **`setup.sh`** from the NestGuard
+   folder in Finder into the Terminal window, and press **Enter**.
+3. If it says **Python** or **Node.js** is missing, install it from the link it shows, then do
+   step 2 again. (If you have Homebrew, it installs them for you.)
+4. After that, start NestGuard any time the same way, with **`run.sh`** instead of `setup.sh`.
+   Keep that Terminal window open while you use NestGuard; press **Ctrl + C** in it to stop.
+
+Either way, the dashboard opens at <http://localhost:3000>.
 
 ### Step 2. Let the boxes reach your laptop
 
-Windows blocks other devices from talking to your laptop by default. **`setup.bat` fixes this for
+**Mac:** there's nothing to run. The first time `run.sh` starts, macOS may ask one or both of:
+
+- *"Do you want the application "python3" to accept incoming network connections?"* Click
+  **Allow**.
+- *"Terminal would like to find and connect to devices on your local network."* Click **Allow**.
+
+Clicked **Don't Allow** by accident? Fix it in **System Settings → Privacy & Security → Local
+Network** (turn on Terminal) and **System Settings → Network → Firewall → Options** (set Python to
+"Allow incoming connections"). Then skip to Step 3.
+
+**Windows:** Windows blocks other devices from talking to your laptop by default. **`setup.bat` fixes this for
 you:** near the end it shows a Windows prompt asking *"Do you want to allow this app to make
 changes to your device?"*. Click **Yes**. It ends with:
 
@@ -104,8 +130,8 @@ isn't done.
 ### Step 3. Your friend's laptop
 
 Do Step 1 and Step 2 on your friend's laptop too: copy the NestGuard folder over (or download it
-again), double-click `setup.bat`, click **Yes** on the prompt. That's everything. No Arduino, no
-settings, no addresses.
+again), run `setup.bat` (Windows) or `setup.sh` (Mac), and allow the prompts. That's everything.
+No Arduino, no settings, no addresses. A Windows laptop and a Mac can share the same boxes.
 
 ---
 
@@ -115,10 +141,17 @@ Arduino IDE is the free program that copies the NestGuard code onto the ESP32 bo
 
 ### Step 4. Install Arduino IDE and connect the board
 
-1. Download **Arduino IDE 2** from <https://www.arduino.cc/en/software> (Windows installer) and
-   install it. Say **Yes / Install** to any driver pop-ups.
+1. Download **Arduino IDE 2** from <https://www.arduino.cc/en/software> and install it.
+   - **Windows:** pick the Windows installer. Say **Yes / Install** to any driver pop-ups.
+   - **Mac:** pick **macOS Apple Silicon** (M1/M2/M3/M4 Macs) or **macOS Intel** (older Macs;
+     check Apple menu → About This Mac). Open the downloaded file and drag Arduino IDE into
+     **Applications**.
 2. Plug the ESP32 into the laptop with the USB cable. A small red light on the board turns on.
-3. Open Arduino IDE. Go to **Tools → Port**. A port such as **COM3** or **COM5** should be listed.
+3. Open Arduino IDE. Go to **Tools → Port**. Your board shows up as:
+   - **Windows:** a port such as **COM3** or **COM5**.
+   - **Mac:** a port such as **/dev/cu.usbserial-0001**, **/dev/cu.SLAB_USBtoUART** or
+     **/dev/cu.wchusbserial...**. Never pick one with *Bluetooth* in its name.
+
    Unplug the board and check the menu again: the one that disappears is your board.
 
 **No port appears?**
@@ -130,7 +163,10 @@ Arduino IDE is the free program that copies the NestGuard code onto the ESP32 bo
     Silicon Labs.
   - It says **CH340** or **CH9102**: install the "CH340 driver" from WCH (wch-ic.com).
 
-  Restart Arduino IDE after installing.
+  Download the Windows or macOS version to match your laptop. Recent Macs usually need no driver
+  at all. On a Mac, if the install says the software was blocked, open **System Settings →
+  Privacy & Security**, click **Allow** next to the message, and restart the Mac. Restart Arduino
+  IDE after installing.
 
 ### Step 5. Add ESP32 support and the three libraries
 
@@ -257,10 +293,31 @@ Go through this list with your finger on each wire:
 
 ## Part 5: Load the program onto the box
 
-### Step 9. Open the NestGuard program
+### Step 9. Get the NestGuard program into Arduino IDE
+
+A new ESP32 is blank. It needs the NestGuard program to know how to read the sensors and where to
+send the readings. The full program is in the
+[appendix at the end of this guide](#appendix-the-nestguard-program), and the same code is in the
+NestGuard folder as `firmware/nestguard/nestguard.ino`. Use whichever way is easier:
+
+**Option A: open the file** (if you have the NestGuard folder on this laptop)
 
 In Arduino IDE: **File → Open**, go to the NestGuard folder, open
-`firmware\nestguard\nestguard.ino`.
+`firmware/nestguard/nestguard.ino`.
+
+**Option B: copy and paste it from this guide**
+
+1. In Arduino IDE: **File → New Sketch**. A window opens with a few lines of starter code.
+2. Click inside the code, select everything (**Ctrl + A** on Windows, **Cmd + A** on Mac) and
+   delete it, so the window is completely empty.
+3. Scroll down to the [appendix](#appendix-the-nestguard-program), copy the **whole** code block
+   (on GitHub, the copy button at the top-right corner of the block copies all of it), and paste
+   it into the empty window.
+4. **File → Save As**, name it `nestguard`, click **Save**. Arduino IDE puts it in a folder with
+   the same name; that's normal and required.
+
+Either way, you now see the program in Arduino IDE. You only change one line of it, in the next
+step.
 
 ### Step 10. Tell the program which box this is
 
@@ -286,7 +343,7 @@ the laptop on its own.
 
 1. Plug the board in with the USB cable.
 2. **Tools → Board → esp32 → ESP32 Dev Module**.
-3. **Tools → Port →** the COM port from Step 4.
+3. **Tools → Port →** your board's port from Step 4 (COM... on Windows, /dev/cu... on a Mac).
 4. Click the **→ (Upload)** arrow button at the top left.
 5. Wait. The bottom panel shows progress. It ends with **"Hard resetting via RTS pin..."**. That
    means it worked.
@@ -300,7 +357,7 @@ percentage starts climbing, then let go.
 
 ### Step 12. Give the box your Wi-Fi (from your phone)
 
-1. Make sure NestGuard is running on the laptop (`run.bat`).
+1. Make sure NestGuard is running on the laptop (`run.bat` on Windows, `run.sh` on a Mac).
 2. Optional but handy: in Arduino IDE open **Tools > Serial Monitor** and set the speed in its
    bottom-right corner to **115200 baud**. You'll see what the box is doing.
 3. With the box powered (USB cable or charger), open your **phone's Wi-Fi settings**. Within about
@@ -340,8 +397,8 @@ If something's wrong, the Serial Monitor tells you:
 |---|---|---|
 | No `NestGuard-COOP1` network on the phone | Box still trying a saved Wi-Fi, or not powered | Wait a minute. Still nothing: hold the **BOOT** button for 5 seconds to make the box forget its Wi-Fi |
 | The hotspot comes back after you saved | Wrong password, or a 5 GHz network | Redo Step 12 carefully, pick the 2.4 GHz network |
-| `No NestGuard laptop answered` | Box is on Wi-Fi but no laptop replied | Is `run.bat` running? Is the laptop on the **same** Wi-Fi? Did Step 2 end with `[ok]`? |
-| `-> -1` a few times, then `searching for NestGuard again` | Laptop went away (closed, asleep, other Wi-Fi) | Start `run.bat`; the box finds it again by itself |
+| `No NestGuard laptop answered` | Box is on Wi-Fi but no laptop replied | Is `run.bat` / `run.sh` running? Is the laptop on the **same** Wi-Fi? Windows: did Step 2 end with `[ok]`? Mac: did you click **Allow** in Step 2? |
+| `-> -1` a few times, then `searching for NestGuard again` | Laptop went away (closed, asleep, other Wi-Fi) | Start `run.bat` / `run.sh`; the box finds it again by itself |
 | `-> 404` | This box isn't registered | Register it on the dashboard, or check the ENCLOSURE_ID spelling |
 | `-> 401`, or `Ignored an answer ... failed verification` | Box and laptop use different keys | The box's `API_KEY` must match `API_KEY` in `backend/.env` |
 | `DHT22 read failed` | Temperature sensor not answering | Check the DHT22's 3 wires, especially **out > D4** |
@@ -394,10 +451,13 @@ Wi-Fi in Step 12. Parts 2 and 3 don't need repeating.
 
 ## Daily use
 
-- **Keep the laptop on, connected to the same Wi-Fi, with `run.bat` running.** The dashboard only
-  works while it runs.
-- **Stop the laptop from sleeping** while plugged in: **Settings → System → Power → Screen and
-  sleep → "When plugged in, put my device to sleep after" → Never.**
+- **Keep the laptop on, connected to the same Wi-Fi, with `run.bat` / `run.sh` running.** The
+  dashboard only works while it runs.
+- **Stop the laptop from sleeping** while plugged in:
+  - **Windows:** **Settings → System → Power → Screen and sleep → "When plugged in, put my device
+    to sleep after" → Never.**
+  - **Mac:** `run.sh` keeps the Mac awake by itself while it runs. Just keep the **lid open**:
+    closing it puts the Mac to sleep anyway.
 - **The boxes look after themselves.** After a power cut they restart and reconnect on their own.
   It doesn't matter whether the laptop or the boxes start first.
 - **If the laptop is off,** the boxes keep trying. Readings taken during that time are lost, and
@@ -412,8 +472,9 @@ Wi-Fi in Step 12. Parts 2 and 3 don't need repeating.
 
 ### Switching laptops (yours and your friend's)
 
-1. Close `run.bat` on the old laptop (close its two windows).
-2. Start `run.bat` on the other laptop, on the **same Wi-Fi**.
+1. Stop NestGuard on the old laptop. Windows: close the two `run.bat` windows. Mac: press
+   **Ctrl + C** in the `run.sh` Terminal window, or close it.
+2. Start `run.bat` / `run.sh` on the other laptop, on the **same Wi-Fi**.
 3. Wait. Within about 2 minutes each box notices the old laptop is gone, looks again, and finds
    the new one. Nothing to do on the boxes.
 
@@ -465,3 +526,263 @@ in Step 12).
   | Livestock shelter | 28 °C | 32 °C |
 
 - **Everything stays in your home.** The boxes only talk to your laptop over your Wi-Fi.
+
+---
+
+## Appendix: the NestGuard program
+
+This is the program that goes onto every ESP32 (Step 9). It's the same as
+`firmware/nestguard/nestguard.ino` in the NestGuard folder; if the two ever differ, use the file.
+Copy **all** of it, from the first `/*` to the last `}`. The only line you change is
+`ENCLOSURE_ID` (Step 10).
+
+```cpp
+/*
+ * NestGuard: ESP32 sensor box firmware (plug and play)
+ *
+ * Reads DHT22 (temperature/humidity), MQ-135 (air quality), LDR (light) and a
+ * sound sensor, and POSTs a JSON reading to the NestGuard laptop every
+ * POST_INTERVAL_MS.
+ *
+ * Nothing about the network is hard-coded:
+ *   - Wi-Fi: on first start, or when no saved Wi-Fi is in range, the box opens
+ *     its own hotspot "NestGuard-<ENCLOSURE_ID>". Join it from a phone, pick
+ *     the Wi-Fi, type the password; the box remembers it. Holding the BOOT
+ *     button for 5 seconds forgets the saved Wi-Fi and reopens the hotspot.
+ *   - Laptop: the box broadcasts "NESTGUARD_DISCOVER <nonce>" on UDP
+ *     DISCOVERY_PORT and whichever laptop runs NestGuard answers
+ *     (backend/app/discovery.py) with an HMAC-SHA256 proof keyed by API_KEY.
+ *     Answers whose proof doesn't check out are ignored, so another device on
+ *     the Wi-Fi can't pose as NestGuard and collect readings or the key.
+ *     If posting fails a few times in a row, it searches again, so switching
+ *     laptops or a new laptop IP sorts itself out.
+ *
+ * NOT FLASH-TESTED: there was no physical ESP32 available when this was
+ * written. See docs/HARDWARE_GUIDE.md for wiring and setup.
+ *
+ * Libraries (Arduino IDE > Tools > Manage Libraries):
+ *   - "DHT sensor library" by Adafruit (accept "Adafruit Unified Sensor")
+ *   - "ArduinoJson" by Benoit Blanchon, version 7+
+ *   - "WiFiManager" by tzapu, version 2+
+ * Board support: Boards Manager > "esp32" by Espressif Systems.
+ *
+ * Wiring (ESP32 ADC1 pins only; ADC2 conflicts with Wi-Fi):
+ *   DHT22 data   -> GPIO4
+ *   MQ-135 AOUT  -> GPIO34 through a 10k / 20k voltage divider (the module runs
+ *                   on 5V from VIN, and its output can exceed the ESP32's 3.3V)
+ *   LDR AOUT     -> GPIO35
+ *   Sound AOUT   -> GPIO32
+ *   DHT22, LDR, sound VCC -> 3V3. MQ-135 VCC -> VIN (5V). All GND -> GND.
+ */
+
+#include <WiFi.h>
+#include <WiFiUdp.h>
+#include <WiFiManager.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+#include <DHT.h>
+#include "mbedtls/md.h"  // HMAC, part of the ESP32 board package
+
+// ---- Set once per box, before uploading ----
+const char *ENCLOSURE_ID = "COOP1";     // HIVE1, COOP1 or SHED1
+const char *API_KEY = "dev-local-key";  // must match backend/.env's API_KEY
+// Leave empty so the box finds the laptop by itself. Only fill in, e.g.
+// "http://192.168.137.1:8000", on networks that block discovery.
+const char *FIXED_BACKEND_URL = "";
+// ---------------------------------------------
+
+#define DHT_PIN 4
+#define DHT_TYPE DHT22
+#define MQ135_PIN 34
+#define LDR_PIN 35
+#define SOUND_PIN 32
+#define BOOT_PIN 0
+
+#define POST_INTERVAL_MS 30000
+#define DISCOVERY_PORT 47800
+#define DISCOVERY_TIMEOUT_MS 2000
+#define RETRY_DELAY_MS 5000
+#define MAX_FAILED_POSTS 3
+#define WIFI_RESET_HOLD_MS 5000
+#define SETUP_HOTSPOT_TIMEOUT_S 180  // then restart and try the saved Wi-Fi again
+
+DHT dht(DHT_PIN, DHT_TYPE);
+WiFiUDP udp;
+
+String backendUrl;  // "http://<laptop ip>:<port>", empty until discovered
+int failedPosts = 0;
+unsigned long lastPostAt = 0;
+bool hasPosted = false;
+unsigned long bootPressedAt = 0;
+
+void connectWiFi() {
+  WiFiManager wm;
+  wm.setConfigPortalTimeout(SETUP_HOTSPOT_TIMEOUT_S);
+  String hotspot = String("NestGuard-") + ENCLOSURE_ID;
+  Serial.printf("Joining saved Wi-Fi, or opening setup hotspot \"%s\"...\n", hotspot.c_str());
+  if (!wm.autoConnect(hotspot.c_str())) {
+    Serial.println("No Wi-Fi set up in time. Restarting to try again.");
+    ESP.restart();
+  }
+  Serial.printf("Connected to \"%s\", box IP: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+}
+
+// Hex HMAC-SHA256 of message, keyed with API_KEY. Must match discovery.proof().
+String hmacHex(const String &message) {
+  unsigned char digest[32];
+  mbedtls_md_context_t ctx;
+  mbedtls_md_init(&ctx);
+  mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 1);
+  mbedtls_md_hmac_starts(&ctx, (const unsigned char *)API_KEY, strlen(API_KEY));
+  mbedtls_md_hmac_update(&ctx, (const unsigned char *)message.c_str(), message.length());
+  mbedtls_md_hmac_finish(&ctx, digest);
+  mbedtls_md_free(&ctx);
+
+  char hex[65];
+  for (int i = 0; i < 32; i++) sprintf(hex + 2 * i, "%02x", digest[i]);
+  return String(hex);
+}
+
+// Asks the network where NestGuard is. True once backendUrl is set.
+bool discoverBackend() {
+  if (strlen(FIXED_BACKEND_URL) > 0) {
+    backendUrl = FIXED_BACKEND_URL;
+    return true;
+  }
+
+  // Fresh random nonce per search, so an old answer can't be replayed.
+  char nonce[17];
+  snprintf(nonce, sizeof(nonce), "%08lx%08lx", (unsigned long)esp_random(), (unsigned long)esp_random());
+
+  Serial.println("Looking for the NestGuard laptop...");
+  udp.beginPacket(WiFi.broadcastIP(), DISCOVERY_PORT);
+  udp.print("NESTGUARD_DISCOVER ");
+  udp.print(nonce);
+  udp.endPacket();
+
+  unsigned long start = millis();
+  while (millis() - start < DISCOVERY_TIMEOUT_MS) {
+    if (udp.parsePacket() > 0) {
+      char reply[128];
+      int len = udp.read(reply, sizeof(reply) - 1);
+      reply[len > 0 ? len : 0] = '\0';
+
+      int port = 0;
+      char proof[65] = {0};
+      if (sscanf(reply, "NESTGUARD_HERE %d %64s", &port, proof) == 2) {
+        String sender = udp.remoteIP().toString();
+        String expected = hmacHex(String(nonce) + ":" + String(port) + ":" + sender);
+        if (expected.equals(proof)) {
+          backendUrl = "http://" + sender + ":" + String(port);
+          Serial.printf("Found NestGuard at %s\n", backendUrl.c_str());
+          return true;
+        }
+        Serial.printf("Ignored an answer from %s that failed verification (wrong API_KEY?)\n", sender.c_str());
+      }
+    }
+    delay(10);
+  }
+  Serial.println("No NestGuard laptop answered. Is run.bat / run.sh running on a laptop on this Wi-Fi?");
+  return false;
+}
+
+// Holding BOOT for WIFI_RESET_HOLD_MS forgets the Wi-Fi and reopens the setup hotspot.
+void checkWiFiResetButton() {
+  if (digitalRead(BOOT_PIN) != LOW) {
+    bootPressedAt = 0;
+    return;
+  }
+  if (bootPressedAt == 0) {
+    bootPressedAt = millis();
+  } else if (millis() - bootPressedAt >= WIFI_RESET_HOLD_MS) {
+    Serial.println("BOOT held: forgetting saved Wi-Fi and restarting into setup mode.");
+    WiFiManager wm;
+    wm.resetSettings();
+    delay(500);
+    ESP.restart();
+  }
+}
+
+int postReading(float temperature, float humidity, int airQuality, int light, int sound) {
+  JsonDocument doc;
+  doc["temperature"] = temperature;
+  doc["humidity"] = humidity;
+  doc["airQuality"] = airQuality;
+  doc["light"] = light;
+  doc["sound"] = sound;
+
+  String body;
+  serializeJson(doc, body);
+
+  String url = backendUrl + "/enclosures/" + ENCLOSURE_ID + "/readings";
+  HTTPClient http;
+  http.setTimeout(5000);
+  http.begin(url);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-API-Key", API_KEY);
+
+  int statusCode = http.POST(body);
+  Serial.printf("POST %s -> %d\n", url.c_str(), statusCode);
+  http.end();
+  return statusCode;
+}
+
+void readAndPost() {
+  float temperature = dht.readTemperature();
+  float humidity = dht.readHumidity();
+  int airQuality = analogRead(MQ135_PIN);
+  int light = analogRead(LDR_PIN);
+  int sound = analogRead(SOUND_PIN);
+
+  if (isnan(temperature) || isnan(humidity)) {
+    Serial.println("DHT22 read failed, skipping this cycle. Check the DHT22 wiring (data -> GPIO4).");
+    return;
+  }
+  Serial.printf("temp=%.1fC humidity=%.1f%% airQuality=%d light=%d sound=%d\n",
+                temperature, humidity, airQuality, light, sound);
+
+  int statusCode = postReading(temperature, humidity, airQuality, light, sound);
+  if (statusCode > 0) {
+    failedPosts = 0;
+    if (statusCode == 404) Serial.println("This box isn't registered: register it on the dashboard.");
+    if (statusCode == 401) Serial.println("API key mismatch with backend/.env.");
+  } else if (++failedPosts >= MAX_FAILED_POSTS) {
+    Serial.println("Laptop unreachable, searching for NestGuard again.");
+    backendUrl = "";
+    failedPosts = 0;
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(BOOT_PIN, INPUT_PULLUP);
+  dht.begin();
+  Serial.printf("\nNestGuard box %s starting\n", ENCLOSURE_ID);
+  connectWiFi();
+  udp.begin(DISCOVERY_PORT);
+}
+
+void loop() {
+  checkWiFiResetButton();
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Wi-Fi dropped, reconnecting...");
+    WiFi.reconnect();
+    delay(RETRY_DELAY_MS);
+    return;
+  }
+
+  if (backendUrl.isEmpty() && !discoverBackend()) {
+    delay(RETRY_DELAY_MS);
+    return;
+  }
+
+  if (hasPosted && millis() - lastPostAt < POST_INTERVAL_MS) {
+    delay(50);
+    return;
+  }
+  lastPostAt = millis();
+  hasPosted = true;
+  readAndPost();
+}
+```
